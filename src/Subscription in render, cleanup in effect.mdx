@@ -1,0 +1,52 @@
+# id: subscription-in-render-cleanup-in-effect
+
+- Problem: React component render code should not create subscriptions (side-effect).
+- Solution: Subscribe in effect hook AND unsubscribe in the SAME effect hook's cleanup function.
+- Why:
+  1. React concurrent mode can execute code in a component's render path then throw away the result without ever calling effect hooks, leading to subscriptions that are never cleaned up as their references are lost.
+  2. React Strict Mode in development WILL invoke render code at least twice, before invoking effect hooks, and at least one subscription never being cleaned up.
+
+## Anti-Patterns
+
+### Subscribe in render but clean up in effect hook
+
+❌ Issue - The subscribe/unsubscribe are split between the render code and useEffect cleanup code which will get out of sync in concurrent mode.
+
+```tsx
+const subscriptionRef = useRef<Subscription | null>(null);
+
+if (!hasMounted.current) {
+  subscriptionRef.current = someService.subscribe(/*...*/);
+}
+// or useLayoutEffect/useInsertionEffect
+useEffect(() => {
+  return () => subscriptionRef.current?.unsubscribe();
+}, []);
+```
+
+✅ Solution - Move the subscription inside the effect hook so the pairs of subscribe/unsubscribe are always matched.
+
+```tsx
+// or useLayoutEffect/useInsertionEffect
+React.useEffect(() => {
+  const subscription = someService.subscribe((data) => {
+    setState(data);
+  });
+
+  return () => {
+    subscription.unsubscribe();
+  };
+}, [someService /* other deps */]);
+```
+
+## Ok-Patterns
+
+### Subscribe in body only
+
+✅ OK as-is - The current code subscribes every render and is already called multiple times and has no clean up. Concurrent mode will not change its behavior.
+
+```tsx
+const Component = () => {
+  someService.subscribe(/*...*/);
+};
+```
