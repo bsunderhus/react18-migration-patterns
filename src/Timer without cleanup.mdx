@@ -1,0 +1,65 @@
+# id: timer-without-cleanup
+
+- Problem: Timers such as requestAnimationFrame, setInterval, setImmediate, setTimeout or queueMicrotask should always be cleaned up to avoid memory leaks and unexpected behavior.
+- Solution: Always store the timer handle and clean it up when no longer needed. Keep timer creation out of the render phase.
+  1. it should never be on body nor in useMemo
+  2. it should always have a cleanup
+  3. it can be on a callback or on an effect, but if it's on a callback, the cleanup should be in the same callback or returned to the caller for cleanup.
+- Why: Timers created without cleanup can lead to memory leaks and unexpected behavior, especially in React concurrent mode where components may be mounted and unmounted multiple times.
+
+### Anti-Pattern: timer created in render without cleanup
+
+❌ Issue - Creating timers in the render phase without storing the handle or cleaning them up can lead to memory leaks and unexpected behavior.
+
+```tsx
+if (enableRAF) {
+  host.requestAnimationFrame(() => {
+    // ...
+  });
+}
+```
+
+✅ Solution - Create timer in effect hook, store the handle, and clean it up in the same effect hook.
+
+```tsx
+// or useLayoutEffect/useInsertionEffect
+React.useEffect(() => {
+  if (!enableRAF) return;
+
+  const rafId = host.requestAnimationFrame(() => {
+    // ...
+  });
+
+  return () => {
+    host.cancelAnimationFrame(rafId);
+  };
+}, [enableRAF, host]);
+```
+
+### Anti-Pattern: timer created in callback without cleanup
+
+❌ Issue - Creating timers in a callback without storing the handle or cleaning them up can lead to memory leaks and unexpected behavior.
+
+```tsx
+const startRAF = React.useCallback(() => {
+  if (enableRAF) {
+    host.requestAnimationFrame(() => {
+      // ...
+    });
+  }
+}, [enableRAF, host]);
+```
+
+✅ Solution - Store the timer handle in the callback and provide a way to clean it up.
+
+```tsx
+const startRAF = React.useCallback(() => {
+  if (!enableRAF) return;
+  const rafId = host.requestAnimationFrame(() => {
+    // ...
+  });
+  return () => {
+    host.cancelAnimationFrame(rafId);
+  };
+}, [enableRAF, host]);
+```

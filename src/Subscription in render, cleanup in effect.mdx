@@ -1,52 +1,93 @@
 # id: subscription-in-render-cleanup-in-effect
 
-- Problem: React component render code should not create subscriptions (side-effect).
-- Solution: Subscribe in effect hook AND unsubscribe in the SAME effect hook's cleanup function.
-- Why:
-  1. React concurrent mode can execute code in a component's render path then throw away the result without ever calling effect hooks, leading to subscriptions that are never cleaned up as their references are lost.
-  2. React Strict Mode in development WILL invoke render code at least twice, before invoking effect hooks, and at least one subscription never being cleaned up.
+- Problem: React component render (body or useMemo) code should not create subscriptions that require cleanup.
+- Solution: Subscribe in useEffect/useLayoutEffect/useInsertionEffect AND unsubscribe in the SAME effect hook's cleanup function.
+- Why: React concurrent mode can execute code in a component's render path then throw away the result without ever calling effect hooks, leading to subscriptions that are never cleaned up as their references are lost.
 
-## Anti-Patterns
-
-### Subscribe in render but clean up in effect hook
+### Anti-pattern: Subscribe in render body and cleanup in useEffect
 
 ❌ Issue - The subscribe/unsubscribe are split between the render code and useEffect cleanup code which will get out of sync in concurrent mode.
 
 ```tsx
-const subscriptionRef = useRef<Subscription | null>(null);
-
-if (!hasMounted.current) {
-  subscriptionRef.current = someService.subscribe(/*...*/);
-}
-// or useLayoutEffect/useInsertionEffect
-useEffect(() => {
-  return () => subscriptionRef.current?.unsubscribe();
-}, []);
+const Component = () => {
+  const someService = useSomeService();
+  const subscriptionRef = React.useRef<Subscription | null>(null);
+  const hasMounted = React.useRef(false);
+  if (!hasMounted.current) {
+    hasMounted.current = true;
+    subscriptionRef.current = someService.subscribe(/*...*/);
+  }
+  React.useEffect(() => {
+    // or useLayoutEffect/useInsertionEffect
+    return () => subscriptionRef.current?.unsubscribe();
+  }, []);
+};
 ```
 
-✅ Solution - Move the subscription inside the effect hook so the pairs of subscribe/unsubscribe are always matched.
+✅ Solution - Move the subscription inside the useEffect so the pairs of subscribe/unsubscribe are always matched.
+
+```tsx
+const subscriptionRef = React.useRef<Subscription | null>(null);
+// or useLayoutEffect/useInsertionEffect
+React.useEffect(() => {
+  subscriptionRef.current = someService.subscribe((data) => {
+    setState(data);
+  });
+  return () => {
+    subscriptionRef.current.unsubscribe();
+  };
+}, [someService /* other deps */]);
+return <SomeProvider value={subscriptionRef.current}>{children}</SomeProvider>;
+```
+
+### Anti-pattern: Subscribe in useMemo and cleanup in effect
+
+❌ Issue - Even if there's no direct call in the render (in this case SomeService might be creating a subscription internally), the cleanup is still separated from the subscription creation which can lead to issues in concurrent mode.
+
+```tsx
+const Component = () => {
+  const someService = React.useMemo(() => new SomeService(), []);
+  // or useLayoutEffect/useInsertionEffect
+  React.useEffect(() => {
+    return () => someService.unsubscribe();
+  }, []);
+};
+```
+
+✅ Solution - Move the service creation and subscription inside the same effect hook.
 
 ```tsx
 // or useLayoutEffect/useInsertionEffect
 React.useEffect(() => {
-  const subscription = someService.subscribe((data) => {
-    setState(data);
-  });
-
+  const someService = new SomeService();
   return () => {
-    subscription.unsubscribe();
+    someService.unsubscribe();
   };
-}, [someService /* other deps */]);
+}, []);
 ```
 
-## Ok-Patterns
+### OK-Pattern: Subscribe in body only
 
-### Subscribe in body only
+> For Humans: ⚠️ This is an anti-pattern overall, you should avoid this pattern in general. However, in concurrent mode, this pattern's behavior does not change because the subscription is created every render and has no cleanup. In Strict Mode, this code is double-invoked but the first subscription is never cleaned up, and the second subscription is created and also never cleaned up, if you're counting on rendering only once to create a single subscription, this will break in Strict Mode.
 
 ✅ OK as-is - The current code subscribes every render and is already called multiple times and has no clean up. Concurrent mode will not change its behavior.
 
 ```tsx
 const Component = () => {
   someService.subscribe(/*...*/);
+};
+```
+
+### OK-Pattern: Subscribe in useMemo only
+
+> For Humans: ⚠️ This is an anti-pattern overall, you should avoid this pattern in general. However, in concurrent mode, this pattern's behavior does not change because the subscription is created every render and has no cleanup. In Strict Mode, this code is double-invoked but the first subscription is never cleaned up, and the second subscription is created and also never cleaned up, if you're counting on rendering only once to create a single subscription, this will break in Strict Mode.
+
+✅ OK as-is - The current code subscribes twice in useMemo and has no clean up. Concurrent mode will not change its behavior.
+
+```tsx
+const Component = () => {
+  React.useMemo(() => {
+    someService.subscribe(/*...*/);
+  }, []);
 };
 ```
