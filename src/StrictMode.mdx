@@ -1,0 +1,26 @@
+# React 18 Strict Mode
+
+Strict Mode enables the following development-only behaviors:
+
+- Components will re-render an extra time to find bugs caused by impure rendering.
+- Components will re-run Effects an extra time to find bugs caused by missing Effect cleanup.
+
+> 🤖 *For Humans only*:
+> - Components will be checked for usage of deprecated APIs.
+
+## Lifecycle of a Component in Strict Mode:
+
+1. Render phase is called
+2. Render phase is called again
+   - All state and refs of the second render is discarded and state and refs from the first is kept
+3. Effect is called (mount)
+4. Effect cleanup is called (unmount)
+5. Effect is called again (mount)
+
+# Not included in version 18 Strict Mode checks
+
+- Components will re-run refs callbacks an extra time to find bugs caused by missing ref cleanup.
+
+This is introduced in React 19 Strict Mode.
+
+In React 18, refs callbacks are called once after the element is appended to the DOM (commit phase) and once when it is removed from the DOM (commit phase).
