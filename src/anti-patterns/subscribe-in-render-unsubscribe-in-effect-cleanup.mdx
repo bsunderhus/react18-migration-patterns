@@ -1,4 +1,8 @@
-# id: subscribe-in-render-unsubscribe-in-effect-cleanup
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Anti-patterns/Subscribe in render, unsubscribe in effect cleanup" />
+
+## id: subscribe-in-render-unsubscribe-in-effect-cleanup
 
 - Problem: React component (or hook) render code (body or useMemo) should not create subscriptions (`.subscribe(...)` method invocation) that requires unsubscription (`.unsubscribe()` method invocation).
 - Solution: Subscribe in effect hook AND unsubscribe in the SAME effect hook's cleanup function.
@@ -6,7 +10,7 @@
 
 Before classifying code as this pattern, ALL conditions must be met:
 
-❌ Pattern Conditions:
+❌ Anti-pattern Conditions:
 
 1. Subscription happens in render code (component body or useMemo)
 2. Unsubscription happens in an effect CLEANUP function (return statement)
@@ -22,7 +26,7 @@ If ANY of these conditions are met, then it is NOT this pattern.
 - Subscription and unsubscription are already in the same effect and cleanup
 - Only creation exists without cleanup, or only cleanup exists without creation
 
-### Pattern: Subscribe in render body and unsubscribe in effect cleanup
+### Anti-pattern: Subscribe in render body and unsubscribe in effect cleanup
 
 ❌ Issue - The subscribe/unsubscribe are split between render code and effect cleanup code which will get out of sync in concurrent mode.
 
@@ -51,7 +55,7 @@ const Component = () => {
 };
 ```
 
-### Pattern: Subscribe in useMemo and unsubscribe in effect cleanup
+### Anti-pattern: Subscribe in useMemo and unsubscribe in effect cleanup
 
 ❌ Issue - The subscribe/unsubscribe are split between useMemo and effect cleanup code which will get out of sync in concurrent mode.
 
@@ -79,7 +83,7 @@ const Component = (props) => {
 };
 ```
 
-### Pattern: Subscription probably created in render, unsubscribe in effect cleanup
+### Anti-pattern: Subscription probably created in render, unsubscribe in effect cleanup
 
 ❌ Issue - Even if there's no direct call in render to a `.subscribe(...)` (in this case SomeService might be creating a subscription internally), the `.unsubscribe()` is still separated from the subscription creation which can lead to issues in concurrent mode.
 

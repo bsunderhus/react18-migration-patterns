@@ -1,4 +1,8 @@
-# id: timer-without-cleanup
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Anti-patterns/Timer without cleanup" />
+
+## id: timer-without-cleanup
 
 - Problem: Timers such as requestAnimationFrame, setInterval, setImmediate, setTimeout or queueMicrotask should always be cleaned up to avoid memory leaks and unexpected behavior.
 - Solution: Always store the timer handle and clean it up when no longer needed. Keep timer creation out of the render phase.
@@ -7,7 +11,7 @@
   3. it can be on a callback or on an effect, but if it's on a callback, the cleanup should be in the same callback or returned to the caller for cleanup.
 - Why: Timers created without cleanup can lead to memory leaks and unexpected behavior, especially in React concurrent mode where components may be mounted and unmounted multiple times.
 
-### Anti-Pattern: timer created in render without cleanup
+### Anti-pattern: timer created in render without cleanup
 
 ❌ Issue - Creating timers in the render phase without storing the handle or cleaning them up can lead to memory leaks and unexpected behavior.
 
@@ -36,7 +40,7 @@ React.useEffect(() => {
 }, [enableRAF, host]);
 ```
 
-### Anti-Pattern: timer created in callback without cleanup
+### Anti-pattern: timer created in callback without cleanup
 
 ❌ Issue - Creating timers in a callback without storing the handle or cleaning them up can lead to memory leaks and unexpected behavior.
 

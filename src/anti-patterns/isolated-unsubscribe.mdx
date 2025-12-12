@@ -1,4 +1,8 @@
-# id: isolated-unsubscribe
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Anti-patterns/Isolated Unsubscribe" />
+
+## id: isolated-unsubscribe
 
 - Problem: Subscribe and unsubscribe logic should be colocated to ensure they are always in sync.
 - Solution: Place both subscribe and unsubscribe logic within the same function, to force contract. If a function creates a subscription and is not able to clean it up, it should return access to the subscription to the caller so they can handle cleanup.
@@ -10,7 +14,7 @@ The main pattern to detect is when unsubscribe happens in isolation (typically i
 
 Before classifying code as this pattern, ALL conditions must be met:
 
-❌ Pattern Conditions:
+❌ Anti-pattern Conditions:
 
 1. Subscription creation happens in a callback, function, or separate effect
 2. Unsubscribe/cleanup happens in isolation (typically useEffect cleanup) using refs or shared state

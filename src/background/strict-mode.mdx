@@ -1,4 +1,8 @@
-# React 18 Strict Mode
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Background/React 18 Strict Mode" />
+
+## React 18 Strict Mode
 
 Strict Mode enables the following development-only behaviors:
 
@@ -8,7 +12,7 @@ Strict Mode enables the following development-only behaviors:
 > 🤖 *For Humans only*:
 > - Components will be checked for usage of deprecated APIs.
 
-## Lifecycle of a Component in Strict Mode:
+### Lifecycle of a Component in Strict Mode:
 
 1. Render phase is called
 2. Render phase is called again
@@ -17,7 +21,7 @@ Strict Mode enables the following development-only behaviors:
 4. Effect cleanup is called (unmount)
 5. Effect is called again (mount)
 
-# Not included in version 18 Strict Mode checks
+## Not included in version 18 Strict Mode checks
 
 - Components will re-run refs callbacks an extra time to find bugs caused by missing ref cleanup.
 
