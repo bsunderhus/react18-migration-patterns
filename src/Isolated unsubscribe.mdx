@@ -1,0 +1,151 @@
+# id: isolated-unsubscribe
+
+- Problem: Subscribe and unsubscribe logic should be colocated to ensure they are always in sync.
+- Solution: Place both subscribe and unsubscribe logic within the same function, to force contract. If a function creates a subscription and is not able to clean it up, it should return access to the subscription to the caller so they can handle cleanup.
+- Why: Subscriptions that require cleanup should have their subscribe and unsubscribe logic colocated. If they are separated, React concurrent mode can lead to lost references and memory leaks.
+
+Core Issue: Isolated Unsubscribe
+
+The main pattern to detect is when unsubscribe happens in isolation (typically in a useEffect cleanup) without direct access to the subscription creation. This creates a dependency on shared state (refs, closures) that can get out of sync in concurrent mode.
+
+Before classifying code as this pattern, ALL conditions must be met:
+
+❌ Pattern Conditions:
+
+1. Subscription creation happens in a callback, function, or separate effect
+2. Unsubscribe/cleanup happens in isolation (typically useEffect cleanup) using refs or shared state
+3. The unsubscribe does NOT have direct access to the subscription object from creation
+4. Both subscribe and unsubscribe exist but are not colocated
+
+✅ Ok-as-is (not this pattern) Conditions (any of these):
+
+- Subscribe and unsubscribe are in the same function/effect
+- Unsubscribe has direct access to subscription object (no refs/shared state needed)
+- No unsubscribe exists at all
+- Code is not in React components/hooks
+- Unsubscribe happens in same effect as subscribe (even if separate from creation)
+
+### Anti-pattern: callback subscribes without returning subscription
+
+❌ Issue - The subscribe/unsubscribe are split between the callback and the effect hook which will get out of sync in concurrent mode.
+
+```tsx
+const subscriptionRef = React.useRef<Subscription | null>(null);
+const subscribeSomewhere = React.useCallback(() => {
+  subscriptionRef.current = someService.subscribe((data) => {
+    // ...
+  });
+}, []);
+React.useEffect(() => {
+  return () => subscriptionRef.current?.unsubscribe();
+}, []);
+```
+
+✅ Solution - Have the callback return the subscription so the effect hook can clean it up.
+
+```tsx
+const subscribeSomewhere = React.useCallback(() => {
+  return someService.subscribe((data) => {
+    // ...
+  });
+}, []);
+
+React.useEffect(() => {
+  const subscription = subscribeSomewhere();
+  return () => subscription.unsubscribe();
+}, [subscribeSomewhere]);
+```
+
+### Anti-pattern: isolated unsubscribe in effect cleanup
+
+❌ Issue - Unsubscribe happens in isolation using refs/shared state, separated from subscription creation.
+
+```tsx
+const subscriptionRef = React.useRef<Subscription | null>(null);
+
+const handleSomething = React.useCallback(() => {
+  // Subscription created here without returning it
+  subscriptionRef.current = someService.subscribe(/*...*/);
+}, []);
+
+React.useEffect(() => {
+  // Isolated unsubscribe - no direct access to subscription creation
+  return () => subscriptionRef.current?.unsubscribe();
+}, []);
+```
+
+✅ Solution - Have the callback return the subscription for direct cleanup.
+
+```tsx
+const subscribeToSomething = React.useCallback(() => {
+  return someService.subscribe(/*...*/);
+}, []);
+
+React.useEffect(() => {
+  const subscription = subscribeToSomething();
+  return () => subscription.unsubscribe(); // Direct access to subscription
+}, [subscribeToSomething]);
+```
+
+### Anti-pattern: subscription in one effect, cleanup in another
+
+❌ Issue - Subscribe and unsubscribe are in different effects, relying on shared state.
+
+```tsx
+const subscriptionRef = React.useRef<Subscription | null>(null);
+
+React.useEffect(() => {
+  // Effect 1: Creates subscription
+  subscriptionRef.current = someService.subscribe(/*...*/);
+}, [someCondition]);
+
+React.useEffect(() => {
+  // Effect 2: Isolated cleanup
+  return () => subscriptionRef.current?.unsubscribe();
+}, []);
+```
+
+✅ Solution - Combine both in the same effect.
+
+```tsx
+React.useEffect(() => {
+  const subscription = someService.subscribe(/*...*/);
+  return () => subscription.unsubscribe(); // Colocated cleanup
+}, [someCondition]);
+```
+
+### OK-Pattern: subscription and cleanup in separate effects with direct access
+
+> 🤖 *For Humans only*: avoid this if you can, isolated subscriptions/cleanup are easy to get out of sync!
+
+✅ OK as-is - Even though in separate effects, the cleanup effect has direct access to the subscription without refs.
+
+```tsx
+const [subscription, setSubscription] = React.useState<Subscription | null>(
+  null
+);
+
+React.useEffect(() => {
+  const sub = someService.subscribe(/*...*/);
+  setSubscription(sub);
+}, [someCondition]);
+
+React.useEffect(() => {
+  return () => {
+    subscription?.unsubscribe(); // Direct access via state, not refs
+    setSubscription(null);
+  };
+}, [subscription]);
+```
+
+### OK-Pattern: no cleanup exists
+
+> 🤖 *For Humans only*: Most of the time is not a good idea to have subscriptions without proper clean up.
+
+✅ OK as-is - No isolated unsubscribe pattern since there's no cleanup.
+
+```tsx
+const handleSomething = React.useCallback(() => {
+  someService.subscribe(/*...*/); // No cleanup anywhere
+}, []);
+```

@@ -2,9 +2,27 @@
 
 - Problem: React component (or hook) render code (body or useMemo) should not create subscriptions (`.subscribe(...)` method invocation) that requires unsubscription (`.unsubscribe()` method invocation).
 - Solution: Subscribe in effect hook AND unsubscribe in the SAME effect hook's cleanup function.
-- Why: React concurrent mode can execute code in a component's render then throw away the result without ever calling effect hooks, leading to subscriptions that are never cleaned up as their references are lost.
+- Why: In React Concurrent mode, if you have a subscription that requires cleanup, both the subscription and its cleanup must be collocated in the same effect hook. If they are separated, React may call the render code multiple times without calling the cleanup, leading to memory leaks or unexpected behavior.
 
-### Anti-pattern: Subscribe in render body and unsubscribe in effect cleanup
+Before classifying code as this pattern, ALL conditions must be met:
+
+❌ Pattern Conditions:
+
+1. Subscription happens in render code (component body or useMemo)
+2. Unsubscription happens in an effect CLEANUP function (return statement)
+3. Both subscription AND unsubscription methods exist in the code
+4. The subscription and cleanup are SEPARATED (not in the same effect)
+
+If ANY of these conditions are met, then it is NOT this pattern.
+
+✅ Ok-as-is Conditions:
+
+- No unsubscription method exists at all
+- Unsubscription happens in effect body (not cleanup function)
+- Subscription and unsubscription are already in the same effect and cleanup
+- Only creation exists without cleanup, or only cleanup exists without creation
+
+### Pattern: Subscribe in render body and unsubscribe in effect cleanup
 
 ❌ Issue - The subscribe/unsubscribe are split between render code and effect cleanup code which will get out of sync in concurrent mode.
 
@@ -13,7 +31,8 @@ const Component = () => {
   // ... render code
   subscriptionRef.current = someService.subscribe(/*...*/);
   // ... render code
-  React.useEffect(() => { // or useLayoutEffect/useInsertionEffect
+  React.useEffect(() => {
+    // or useLayoutEffect/useInsertionEffect
     return () => subscriptionRef.current?.unsubscribe();
   }, []);
 };
@@ -24,14 +43,15 @@ const Component = () => {
 ```tsx
 const Component = () => {
   // ... render code
-  React.useEffect(() => { // or useLayoutEffect/useInsertionEffect
+  React.useEffect(() => {
+    // or useLayoutEffect/useInsertionEffect
     subscriptionRef.current = someService.subscribe(/*...*/);
     return () => subscriptionRef.current?.unsubscribe();
   }, []);
 };
 ```
 
-### Anti-pattern: Subscribe in useMemo and unsubscribe in effect cleanup
+### Pattern: Subscribe in useMemo and unsubscribe in effect cleanup
 
 ❌ Issue - The subscribe/unsubscribe are split between useMemo and effect cleanup code which will get out of sync in concurrent mode.
 
@@ -53,14 +73,13 @@ const Component = (props) => {
 const Component = (props) => {
   // or useLayoutEffect/useInsertionEffect
   React.useEffect(() => {
-    const subscription = someService.subscribe(/*...*/)
+    const subscription = someService.subscribe(/*...*/);
     return () => subscription.unsubscribe();
   }, []);
 };
 ```
 
-### Anti-pattern: Subscription probably created in render, unsubscribe in effect cleanup
-
+### Pattern: Subscription probably created in render, unsubscribe in effect cleanup
 
 ❌ Issue - Even if there's no direct call in render to a `.subscribe(...)` (in this case SomeService might be creating a subscription internally), the `.unsubscribe()` is still separated from the subscription creation which can lead to issues in concurrent mode.
 
@@ -69,7 +88,8 @@ const Component = (props) => {
   // ... render code
   const someService = React.useMemo(() => new SomeService(/* ... */), []);
   // ...
-  React.useEffect(() => { // or useLayoutEffect/useInsertionEffect
+  React.useEffect(() => {
+    // or useLayoutEffect/useInsertionEffect
     return () => someService.unsubscribe();
   }, []);
 };
@@ -81,7 +101,7 @@ const Component = (props) => {
 const Component = (props) => {
   // or useLayoutEffect/useInsertionEffect
   React.useEffect(() => {
-    const someService = new SomeService(/* ... */)
+    const someService = new SomeService(/* ... */);
     return () => someService.unsubscribe();
   }, []);
 };
@@ -89,7 +109,7 @@ const Component = (props) => {
 
 ### OK-Pattern: Subscribe in body without unsubscribe
 
-> 🤖 *For Humans only*: This is an anti-pattern overall, you should avoid this pattern in general. However, in concurrent mode, this pattern's behavior does not change because the subscription is created every render and has no cleanup. In Strict Mode, this code is double-invoked but the first subscription is never cleaned up, and the second subscription is created and also never cleaned up, if you're counting on rendering only once to create a single subscription, this will break in Strict Mode.
+> 🤖 *For Humans only*: Most of the time is not a good idea to have subscriptions without proper clean up.
 
 ✅ OK as-is - The current code subscribes every render and is already called multiple times and has no clean up. Concurrent mode will not change its behavior.
 
@@ -101,7 +121,7 @@ const Component = () => {
 
 ### OK-Pattern: Subscribe in useMemo without unsubscribe
 
-> 🤖 *For Humans only*: This is an anti-pattern overall, you should avoid this pattern in general. However, in concurrent mode, this pattern's behavior does not change because the subscription is created every render and has no cleanup. In Strict Mode, this code is double-invoked but the first subscription is never cleaned up, and the second subscription is created and also never cleaned up, if you're counting on rendering only once to create a single subscription, this will break in Strict Mode.
+> 🤖 *For Humans only*: Most of the time is not a good idea to have subscriptions without proper clean up.
 
 ✅ OK as-is - The current code subscribes twice in useMemo and has no clean up. Concurrent mode will not change its behavior.
 
@@ -109,6 +129,23 @@ const Component = () => {
 const Component = () => {
   React.useMemo(() => {
     someService.subscribe(/*...*/);
+  }, []);
+};
+```
+
+### OK-Pattern: Subscribe in render and unsubscribe in effect body
+
+> 🤖 *For Humans only*: This will generate subscriptions that might possibly be cleaned up before expected
+> It is problematic but will not lead to lost cleanups in concurrent mode. 
+
+✅ OK as-is - The current code subscribes in render and unsubscribes in effect body. Although not ideal, concurrent mode will not lead to lost cleanups since the unsubscribe is not in cleanup function.
+
+```tsx
+const Component = () => {
+  someService.subscribe(/*...*/);
+  React.useEffect(() => {
+    // or useLayoutEffect/useInsertionEffect
+    someService.unsubscribe();
   }, []);
 };
 ```
